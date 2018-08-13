@@ -1473,8 +1473,12 @@ class ExtensionsConfig(object):
         depends_on = None
         depends_on_node = find(settings[0], "DependsOn")
 
+        if (depends_on_node != None):
+            logger.info("DependsOn found for handler {0}".format(name))
+
         depends_on_name = getattrib(depends_on_node, "name")
         if depends_on_name == "":
+            logger.info("DependsOn name is empty. So setting handler {0}".format(name))
             depends_on_name = ext_handler.name
 
         try:
