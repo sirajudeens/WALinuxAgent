@@ -310,41 +310,31 @@ class ExtHandlersHandler(object):
                 return
 
         dep_level = None
-        deps_wait_until = None
-        handlers_wait_until = datetime.datetime.utcnow()
-        prev_handler = None
+        deps_wait_until = datetime.datetime.utcnow()
 
         self.ext_handlers.extHandlers.sort(key=operator.methodcaller('sort_key'))
         for ext_handler in self.ext_handlers.extHandlers:
+            self.handle_ext_handler(ext_handler, etag)
+
             # Use updated time limit for each dependency level
             if dep_level != ext_handler.sort_key():
                 dep_level = ext_handler.sort_key()
-                deps_wait_until = handlers_wait_until
-                handlers_wait_until += datetime.timedelta(minutes=DEFAULT_EXT_TIMEOUT_MINUTES)
+                deps_wait_until += datetime.timedelta(minutes=DEFAULT_EXT_TIMEOUT_MINUTES)
 
-            # Make sure that the previous extension is installed.
-            # If installed successfully, proceed with installing the current handler.
+            # Make sure that the extension is installed successfully.
+            # If installed successfully, proceed with the next handler.
             # Otherwise, skip the rest of them.
-            if dep_level >= 0:
-                if self.wait_for_prev_handler_installation(prev_handler, ext_handler, deps_wait_until):
-                    prev_handler = ext_handler
-                else:
-                    break
-
-            self.handle_ext_handler(ext_handler, etag)
+            if dep_level >= 0 and not self.wait_for_installation(ext_handler, deps_wait_until):
+                break
 
     '''
-    Check the status of the previous extension installed.
+    Check the status of the extension installed.
     Wait until it becomes success or times out.
     Return True if it is installed successfully. False if timed out.
     '''
-    def wait_for_prev_handler_installation(self, prev_handler, cur_handler, wait_until):
-        # No need to wait on anything for the very first extension
-        if prev_handler == None:
-            return True
-
-        handler_i = ExtHandlerInstance(prev_handler, self.protocol)
-        for ext in prev_handler.properties.extensions:
+    def wait_for_installation(self, ext_handler, wait_until):
+        handler_i = ExtHandlerInstance(ext_handler, self.protocol)
+        for ext in ext_handler.properties.extensions:
             success_status, status = handler_i.is_ext_status_success(ext)
 
             # Keep polling for the extension status until it becomes success or times out
@@ -356,11 +346,10 @@ class ExtHandlersHandler(object):
             # on this one can be skipped processing
             if not success_status:
                 msg = "Timeout waiting for success status " \
-                      "from dependency {0}/{1} for {2}" \
-                      "status was: {3}".format(prev_handler.name,
-                                               ext.name,
-                                               cur_handler.name,
-                                               status)
+                      "from {0} for {1}" \
+                      "status was: {2}".format(ext.name,
+                                               ext_handler.name,
+                                               status.status)
                 logger.info(msg)
                 add_event(AGENT_NAME,
                           version=CURRENT_VERSION,

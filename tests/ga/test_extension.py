@@ -551,6 +551,7 @@ class TestExtension(ExtensionTestCase):
     def test_ext_handler_download_failure_transient(self, mock_add_event, *args):
         test_data = WireProtocolData(DATA_FILE)
         exthandlers_handler, protocol = self._create_mock(test_data, *args)
+        exthandlers_handler.wait_for_installation = Mock(return_value=False)
         protocol.download_ext_handler_pkg = Mock(side_effect=ProtocolError)
 
         exthandlers_handler.run()
@@ -618,14 +619,18 @@ class TestExtension(ExtensionTestCase):
         # Disable extension handling blocking
         conf.get_enable_overprovisioning = Mock(return_value=False)
         with patch.object(ExtHandlersHandler, 'handle_ext_handler') as patch_handle_ext_handler:
-            exthandlers_handler.handle_ext_handlers()
-            self.assertEqual(1, patch_handle_ext_handler.call_count)
+            with patch.object(ExtHandlersHandler, 'wait_for_installation') as patch_wait_for_installation:
+                exthandlers_handler.handle_ext_handlers()
+                self.assertEqual(1, patch_handle_ext_handler.call_count)
+                self.assertEqual(1, patch_wait_for_installation.call_count)
 
         # enable extension handling blocking
         conf.get_enable_overprovisioning = Mock(return_value=True)
         with patch.object(ExtHandlersHandler, 'handle_ext_handler') as patch_handle_ext_handler:
-            exthandlers_handler.handle_ext_handlers()
-            self.assertEqual(0, patch_handle_ext_handler.call_count)
+            with patch.object(ExtHandlersHandler, 'wait_for_installation') as patch_wait_for_installation:
+                exthandlers_handler.handle_ext_handlers()
+                self.assertEqual(0, patch_handle_ext_handler.call_count)
+                self.assertEqual(0, patch_wait_for_installation.call_count)
 
     def test_handle_ext_handlers_on_hold_false(self, *args):
         test_data = WireProtocolData(DATA_FILE)
@@ -642,14 +647,18 @@ class TestExtension(ExtensionTestCase):
         mock_in_vm_artifacts_profile.is_on_hold = Mock(return_value=False)
         protocol.get_artifacts_profile = Mock(return_value=mock_in_vm_artifacts_profile)
         with patch.object(ExtHandlersHandler, 'handle_ext_handler') as patch_handle_ext_handler:
-            exthandlers_handler.handle_ext_handlers()
-            self.assertEqual(1, patch_handle_ext_handler.call_count)
+            with patch.object(ExtHandlersHandler, 'wait_for_installation') as patch_wait_for_installation:
+                exthandlers_handler.handle_ext_handlers()
+                self.assertEqual(1, patch_handle_ext_handler.call_count)
+                self.assertEqual(1, patch_wait_for_installation.call_count)
 
         #Test when in_vm_artifacts_profile is not available
         protocol.get_artifacts_profile = Mock(return_value=None)
         with patch.object(ExtHandlersHandler, 'handle_ext_handler') as patch_handle_ext_handler:
-            exthandlers_handler.handle_ext_handlers()
-            self.assertEqual(1, patch_handle_ext_handler.call_count)
+            with patch.object(ExtHandlersHandler, 'wait_for_installation') as patch_wait_for_installation:
+                exthandlers_handler.handle_ext_handlers()
+                self.assertEqual(1, patch_handle_ext_handler.call_count)
+                self.assertEqual(1, patch_wait_for_installation.call_count)
 
     def _assert_ext_status(self, report_ext_status, expected_status,
                            expected_seq_no):
@@ -672,37 +681,36 @@ class TestExtension(ExtensionTestCase):
         self.assertTrue(os.path.isfile(status_file))
         os.remove(status_file)
 
+        exthandlers_handler.wait_for_installation = MagicMock(return_value=False)
         exthandlers_handler.run()
         self._assert_handler_status(protocol.report_vm_status, "Ready", 1, "1.0.0")
         self._assert_ext_status(protocol.report_ext_status, "error", 0)
 
-    def test_wait_for_prev_handler_installation_empty_exts(self, *args):
+    def test_wait_for_installation_empty_exts(self, *args):
         test_data = WireProtocolData(DATA_FILE)
         exthandlers_handler, protocol = self._create_mock(test_data, *args)
 
-        prev_handler = ExtHandler(name="Previous")
         exthandler = ExtHandler(name="Handler")
 
         ExtHandlerInstance.collect_ext_status = MagicMock(return_value=None)
-        self.assertTrue(exthandlers_handler.wait_for_prev_handler_installation(None, exthandler, datetime.datetime.utcnow()))
-        self.assertTrue(exthandlers_handler.wait_for_prev_handler_installation(prev_handler, exthandler, datetime.datetime.utcnow()))
+        self.assertTrue(exthandlers_handler.wait_for_installation(exthandler, datetime.datetime.utcnow()))
 
-    def _test_wait_for_prev_handler_installation(self, exthandlers_handler):
+    def _test_wait_for_installation(self, exthandlers_handler):
         handler_name = "Handler"
         exthandler = ExtHandler(name=handler_name)
         extension = Extension(name=handler_name)
         exthandler.properties.extensions.append(extension)
 
-        return exthandlers_handler.wait_for_prev_handler_installation(exthandler, exthandler, datetime.datetime.utcnow())
+        return exthandlers_handler.wait_for_installation(exthandler, datetime.datetime.utcnow())
 
-    def test_wait_for_prev_handler_installation_none(self, *args):
+    def test_wait_for_installation_none(self, *args):
         test_data = WireProtocolData(DATA_FILE)
         exthandlers_handler, protocol = self._create_mock(test_data, *args)
 
         ExtHandlerInstance.collect_ext_status = MagicMock(return_value=None)
-        self.assertTrue(self._test_wait_for_prev_handler_installation(exthandlers_handler))
+        self.assertTrue(self._test_wait_for_installation(exthandlers_handler))
 
-    def test_wait_for_prev_handler_installation_success_status(self, *args):
+    def test_wait_for_installation_success_status(self, *args):
         test_data = WireProtocolData(DATA_FILE)
         exthandlers_handler, protocol = self._create_mock(test_data, *args)
 
@@ -710,9 +718,9 @@ class TestExtension(ExtensionTestCase):
         status.status = "success"
 
         ExtHandlerInstance.collect_ext_status = MagicMock(return_value=status)
-        self.assertTrue(self._test_wait_for_prev_handler_installation(exthandlers_handler))
+        self.assertTrue(self._test_wait_for_installation(exthandlers_handler))
 
-    def test_wait_for_prev_handler_installation_success_status_with_substatus(self, *args):
+    def test_wait_for_installation_success_status_with_substatus(self, *args):
         test_data = WireProtocolData(DATA_FILE)
         exthandlers_handler, protocol = self._create_mock(test_data, *args)
 
@@ -723,9 +731,9 @@ class TestExtension(ExtensionTestCase):
         status.substatusList.append(substatus)
 
         ExtHandlerInstance.collect_ext_status = MagicMock(return_value=status)
-        self.assertTrue(self._test_wait_for_prev_handler_installation(exthandlers_handler))
+        self.assertTrue(self._test_wait_for_installation(exthandlers_handler))
 
-    def test_wait_for_prev_handler_installation_timeout(self, *args):
+    def test_wait_for_installation_timeout(self, *args):
         test_data = WireProtocolData(DATA_FILE)
         exthandlers_handler, protocol = self._create_mock(test_data, *args)
 
@@ -733,7 +741,7 @@ class TestExtension(ExtensionTestCase):
         status.status = "error"
 
         ExtHandlerInstance.collect_ext_status = MagicMock(return_value=status)
-        self.assertFalse(self._test_wait_for_prev_handler_installation(exthandlers_handler))
+        self.assertFalse(self._test_wait_for_installation(exthandlers_handler))
 
     def test_ext_handler_version_decide_autoupgrade_internalversion(self, *args):
         for internal in [False, True]:
@@ -845,6 +853,7 @@ class TestExtension(ExtensionTestCase):
         """
         test_data = WireProtocolData(DATA_FILE_EXT_SINGLE)
         exthandlers_handler, protocol = self._create_mock(test_data, *args)
+        exthandlers_handler.wait_for_installation = Mock(return_value=False)
 
         # Ensure initial install is unsuccessful
         patch_poll.call_count = 0
@@ -1008,11 +1017,11 @@ class TestExtensionSequencing(AgentTestCase):
         handler.ext_handlers, handler.last_etag = protocol.get_ext_handlers()
         conf.get_enable_overprovisioning = Mock(return_value=False)
 
-        def wait_for_prev_handler_installation(prev_handler, cur_handler, wait_until):
-            return orig_wait_for_prev_handler_installation(prev_handler, cur_handler, datetime.datetime.utcnow())
+        def wait_for_installation(cur_handler, wait_until):
+            return orig_wait_for_installation(cur_handler, datetime.datetime.utcnow())
 
-        orig_wait_for_prev_handler_installation = handler.wait_for_prev_handler_installation
-        handler.wait_for_prev_handler_installation = wait_for_prev_handler_installation
+        orig_wait_for_installation = handler.wait_for_installation
+        handler.wait_for_installation = wait_for_installation
         return handler
 
     def _set_dependency_levels(self, dependency_levels, exthandlers_handler):
